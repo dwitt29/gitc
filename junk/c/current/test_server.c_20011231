@@ -1,0 +1,200 @@
+
+#include "inet.h"
+#include <string.h>
+#include <sys/ioctl.h>
+#include <sys/time.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <errno.h>
+
+int build_server(srv_name,clients)
+char * srv_name;
+int clients[];
+{
+  /*
+   *  1-socket()
+   *  2-bind()
+   *  3-listen()
+   */
+
+  int maxfdp1=0;
+  int client_index=0;
+  int listen_port=0;
+  int listener=0;
+  char turn_on = '1';
+  int base_listen_port=0;
+  struct servent * srv_info = NULL;
+  char * srv_proto = "tcp";
+  struct sockaddr_in srv;
+  struct sockaddr_in clt;
+  int q = 5;
+  int found = 0;
+  int addr_len = 0;
+
+  struct timeval select_expire;
+
+  fd_set fd_readers,
+	 fd_writers,
+	 fd_excepts;
+
+  select_expire.tv_sec=(long)0;
+  select_expire.tv_usec=(long)250000;
+
+  srv_info=(struct servent *)calloc(1,(size_t)sizeof(struct servent));
+  srv_info = (struct servent *)getservbyname(srv_name,srv_proto);
+  base_listen_port=listen_port=htons(srv_info->s_port);
+
+  if (  (listener = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0 )
+    printf("Socket() failed, errno=%d\n",errno);
+
+  setsockopt(listener,SOL_SOCKET,SO_REUSEADDR,&turn_on,sizeof(turn_on));
+
+  bzero((char *) &srv, sizeof(srv));
+  srv.sin_family = AF_INET;
+  srv.sin_addr.s_addr=htonl(INADDR_ANY);
+  srv.sin_port=htons(listen_port);
+
+  if ( fcntl(listener, F_SETFL, O_NONBLOCK) < 0 )
+    printf("\nfcntl failed,errno=%d",errno);
+
+  if ( bind(listener, (struct sockaddr_in *) &srv, sizeof(srv)) < 0 )
+     printf("bind() failed, errno=%d\n",errno);
+
+  if ( listen(listener,q) < 0 )
+     printf("listen() failed, errno=%d\n",errno);
+  else 
+  {
+     maxfdp1=listener;
+     maxfdp1++;
+  }
+
+  FD_ZERO(&fd_readers);
+  FD_ZERO(&fd_writers);
+  FD_ZERO(&fd_excepts);
+
+  FD_SET(listener,&fd_readers);
+  FD_SET(listener,&fd_writers);
+  FD_SET(listener,&fd_excepts);
+
+  for (;;)
+  {
+    found=select(maxfdp1,&fd_readers,&fd_writers,&fd_excepts,&select_expire);
+
+    if (found < 0)
+      printf("select() failed, errno=%d\n",errno);
+
+      if ( FD_ISSET(listener,&fd_readers) )
+      {
+        if ( (clients[client_index]=accept(listener,&clt,&addr_len)) < 0 )
+        {
+          printf("accept() failed, errno=%d\n",errno);
+        }
+        else
+        {  
+           client_index++;
+	   printf("Client connected\n");
+        }
+      }
+  }
+}
+
+
+
+int build_server_old(srv_name,listen_limit,listen_quan,socks,sockc)
+char * srv_name;
+int * listen_limit;
+int * listen_quan;
+int socks[];
+int sockc[];
+{
+  /*
+   *  1-socket()
+   *  2-bind()
+   *  3-listen()
+   */
+
+  int sock_index=0;
+  int listen_port=0;
+  int base_listen_port=0;
+  int srv_inst = 0;
+  char * getopt_info = NULL; 
+  int * getopt_info_size = NULL; 
+  struct servent * srv_info = NULL;
+  char * srv_proto = "tcp";
+  char turn_on = '1';
+  struct sockaddr_in srv;
+  struct sockaddr_in clt;
+  int q = 5;
+  int addr_len = 0;
+
+  srv_info=(struct servent *)calloc(1,(size_t)sizeof(struct servent));
+  srv_info = (struct servent *)getservbyname(srv_name,srv_proto);
+  base_listen_port=listen_port=htons(srv_info->s_port);
+
+  while ( socks[sock_index] != 0 )
+  {
+     sock_index++;
+     listen_port++;
+  }
+
+  if (  (socks[sock_index] = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0 )
+    printf("Socket() failed, errno=%d\n",errno);
+
+  setsockopt(socks[sock_index],SOL_SOCKET,SO_REUSEADDR,&turn_on,sizeof(turn_on));
+
+ 
+  bzero((char *) &srv, sizeof(srv));
+  srv.sin_family = AF_INET;
+  srv.sin_addr.s_addr=htonl(INADDR_ANY);
+  srv.sin_port=htons(listen_port);
+
+  if ( fcntl(socks[sock_index], F_SETFL, O_NONBLOCK) < 0 )
+    printf("\nfcntl failed,errno=%d",errno);
+
+  while ( bind(socks[sock_index], (struct sockaddr_in *) &srv, sizeof(srv)) < 0 )
+  {
+     printf("bind() failed, errno=%d\n",errno);
+
+     if (errno == EINVAL )
+       printf("Port=%d already bound to an address\n",listen_port);
+     sleep(5);
+  }
+
+  listen(socks[sock_index],q);
+
+
+  while ( sockc[sock_index]=accept(socks[sock_index],&clt,&addr_len) < 0 ) 
+  { 
+    if (errno == EAGAIN)
+      printf("\nNothing connected yet");
+    sleep(5);
+  }
+
+/*
+  close(sock1);
+*/
+  sleep(5);
+
+/*  return(sock1); */
+}
+
+
+main()
+{
+  int listen_limit=5;
+  int listen_quan=0;
+  int socks[listen_limit];
+  int sockc[listen_limit];
+
+
+  bzero((int *)&socks,sizeof(socks));
+  bzero((int *)&sockc,sizeof(sockc));
+
+  while (listen_quan < listen_limit)
+  {
+    build_server("test",sockc);
+  }
+
+}
+
+
